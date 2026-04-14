@@ -96,8 +96,11 @@ retrieval_worker:
     - "Score phải là float trong khoảng [0, 1]"
     - "Stateless: không đọc hoặc ghi state ngoài những gì được khai báo ở trên"
   actual_implementation:
-    status: "TODO Sprint 2"  # Update to "done" khi xong
-    notes: ""
+    status: "done"
+    embedding: "text-embedding-3-small (OpenAI, ưu tiên) | fallback: all-MiniLM-L6-v2 (SentenceTransformers) | fallback: random (test only)"
+    vector_db: "ChromaDB PersistentClient, collection 'day09_docs', cosine space"
+    score_range: "float [0.0, 1.0] — clamped from cosine distance"
+    notes: "Dense retrieval qua ChromaDB. Score được clamp trong [0,1]. Trả về [] nếu query rỗng hoặc không tìm thấy. Stateless — không đọc/ghi state ngoài contract."
 
 # ─────────────────────────────────────────────
 # Policy Tool Worker
