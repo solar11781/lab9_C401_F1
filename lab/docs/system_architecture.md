@@ -1,7 +1,7 @@
 # System Architecture — Lab Day 09
 
-**Nhóm:** ___________  
-**Ngày:** ___________  
+**Nhóm:** C401-F1 
+**Ngày:** 14/04/2026  
 **Version:** 1.0
 
 ---

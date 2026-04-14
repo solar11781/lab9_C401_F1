@@ -96,11 +96,13 @@ retrieval_worker:
     - "Score phải là float trong khoảng [0, 1]"
     - "Stateless: không đọc hoặc ghi state ngoài những gì được khai báo ở trên"
   actual_implementation:
+
     status: "done"
-    embedding: "text-embedding-3-small (OpenAI, ưu tiên) | fallback: all-MiniLM-L6-v2 (SentenceTransformers) | fallback: random (test only)"
-    vector_db: "ChromaDB PersistentClient, collection 'day09_docs', cosine space"
-    score_range: "float [0.0, 1.0] — clamped from cosine distance"
-    notes: "Dense retrieval qua ChromaDB. Score được clamp trong [0,1]. Trả về [] nếu query rỗng hoặc không tìm thấy. Stateless — không đọc/ghi state ngoài contract."
+
+    notes: "- Tối ưu hiệu năng (Caching): Sử dụng Global Cache cho Embedding Model và ChromaDB Collection để tránh độ trễ khởi tạo lại ở mỗi lượt truy vấn.
+            - Cơ chế Embedding linh hoạt (Fallback): Ưu tiên gọi API OpenAI, tự động lùi về Local Sentence Transformers (all-MiniLM-L6-v2) nếu thiếu API key, và dùng Random embedding làm môi trường test cuối cùng.
+            - Xử lý dữ liệu an toàn (Robustness): Tự động khởi tạo ChromaDB collection nếu chưa có, chặn lỗi thiếu metadata (NoneType), và ép kiểu (clamp) điểm số cosine similarity luôn nằm chuẩn trong khoảng [0, 1].
+            - Tracing & Debugging: Ghi nhận chi tiết I/O của worker (bao gồm số lượng chunks, danh sách sources) và mã lỗi (nếu có) vào biến `worker_io_logs` trên AgentState."
 
 # ─────────────────────────────────────────────
 # Policy Tool Worker
