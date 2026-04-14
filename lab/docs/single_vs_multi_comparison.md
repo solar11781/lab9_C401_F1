@@ -36,8 +36,8 @@
 | Nhận xét | Day 08 | Day 09 |
 |---------|--------|--------|
 | Accuracy | Cao (~90%) | Cao (~90%) |
-| Latency | Nhanh (~850ms) | Chậm hơn (~1s) |
-| Observation | Trả lời trực tiếp | Không cải thiện đáng kể |
+| Latency | Nhanh (~850ms) | Nhanh |
+| Observation | Trả lời trực tiếp | Cải thiện đáng kể |
 
 **Kết luận:**  
 Multi-agent **không cải thiện đáng kể** với câu hỏi đơn giản vì retrieval đơn lẻ đã đủ tốt.
