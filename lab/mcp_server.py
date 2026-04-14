@@ -26,12 +26,16 @@ Sprint 3 TODO:
 
 Chạy thử:
     python mcp_server.py
+    or python mcp_server.py --serve-http
 """
 
 import os
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("day09-helpdesk-mcp")
 
 
 # ─────────────────────────────────────────────
@@ -152,18 +156,18 @@ def tool_search_kb(query: str, top_k: int = 3) -> dict:
             "total_found": len(chunks),
         }
     except Exception as e:
-        # Fallback: return mock data nếu ChromaDB chưa setup
+        # Return a structured error payload instead of fake search data.
         return {
-            "chunks": [
-                {
-                    "text": f"[MOCK] Không thể query ChromaDB: {e}. Kết quả giả lập.",
-                    "source": "mock_data",
-                    "score": 0.5,
-                }
-            ],
-            "sources": ["mock_data"],
-            "total_found": 1,
+            "error": f"search_kb failed: {e}",
+            "chunks": [],
+            "sources": [],
+            "total_found": 0,
         }
+    
+@mcp.tool()
+def search_kb(query: str, top_k: int = 3) -> dict:
+    # Tìm kiếm Knowledge Base nội bộ bằng semantic search.
+    return tool_search_kb(query=query, top_k=top_k)
 
 
 # Mock ticket database
@@ -205,6 +209,11 @@ def tool_get_ticket_info(ticket_id: str) -> dict:
         "error": f"Ticket '{ticket_id}' không tìm thấy trong hệ thống.",
         "available_mock_ids": list(MOCK_TICKETS.keys()),
     }
+
+@mcp.tool()
+def get_ticket_info(ticket_id: str) -> dict:
+    # Tra cứu thông tin ticket từ hệ thống Jira nội bộ.
+    return tool_get_ticket_info(ticket_id=ticket_id)
 
 
 # Mock access control rules
@@ -255,6 +264,15 @@ def tool_check_access_permission(access_level: int, requester_role: str, is_emer
         "source": "access_control_sop.txt",
     }
 
+@mcp.tool()
+def check_access_permission(access_level: int, requester_role: str, is_emergency: bool = False) -> dict:
+    # Kiểm tra điều kiện cấp quyền truy cập theo Access Control SOP.
+    return tool_check_access_permission(
+        access_level=access_level,
+        requester_role=requester_role,
+        is_emergency=is_emergency,
+    )
+
 
 def tool_create_ticket(priority: str, title: str, description: str = "") -> dict:
     """
@@ -273,6 +291,11 @@ def tool_create_ticket(priority: str, title: str, description: str = "") -> dict
     }
     print(f"  [MCP create_ticket] MOCK: {mock_id} | {priority} | {title[:50]}")
     return ticket
+
+@mcp.tool()
+def create_ticket(priority: str, title: str, description: str = "") -> dict:
+    # Tạo ticket mới trong hệ thống Jira (mock business logic for lab).
+    return tool_create_ticket(priority=priority, title=title, description=description)
 
 
 # ─────────────────────────────────────────────
@@ -315,6 +338,10 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> dict:
     tool_fn = TOOL_REGISTRY[tool_name]
     try:
         result = tool_fn(**tool_input)
+
+        # 🔍 Add lightweight debug log (helps explain trace in report)
+        print(f"[MCP] Tool called: {tool_name} | input={tool_input}")
+
         return result
     except TypeError as e:
         return {
@@ -332,47 +359,61 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> dict:
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("MCP Server — Tool Discovery & Test")
-    print("=" * 60)
+    import sys
 
-    # 1. Discover tools
-    print("\n📋 Available Tools:")
-    for tool in list_tools():
-        print(f"  • {tool['name']}: {tool['description'][:60]}...")
-
-    # 2. Test search_kb
-    print("\n🔍 Test: search_kb")
-    result = dispatch_tool("search_kb", {"query": "SLA P1 resolution time", "top_k": 2})
-    if result.get("chunks"):
-        for c in result["chunks"]:
-            print(f"  [{c.get('score', '?')}] {c.get('source')}: {c.get('text', '')[:70]}...")
+    # Run as real MCP server:
+    #   python mcp_server.py --serve
+    # Optional HTTP transport:
+    #   python mcp_server.py --serve-http
+    if "--serve" in sys.argv:
+        print("Starting real MCP server over stdio...")
+        mcp.run()
+    elif "--serve-http" in sys.argv:
+        print("Starting real MCP server over Streamable HTTP...")
+        mcp.run(transport="streamable-http")
     else:
-        print(f"  Result: {result}")
+        # Local demo mode for quick testing without an MCP client
+        print("=" * 60)
+        print("MCP Server — Tool Discovery & Test")
+        print("=" * 60)
 
-    # 3. Test get_ticket_info
-    print("\n🎫 Test: get_ticket_info")
-    ticket = dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
-    print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
-    if ticket.get("notifications_sent"):
-        print(f"  Notifications: {ticket['notifications_sent']}")
+        # 1. Discover tools
+        print("\n📋 Available Tools:")
+        for tool in list_tools():
+            print(f"  • {tool['name']}: {tool['description'][:60]}...")
 
-    # 4. Test check_access_permission
-    print("\n🔐 Test: check_access_permission (Level 3, emergency)")
-    perm = dispatch_tool("check_access_permission", {
-        "access_level": 3,
-        "requester_role": "contractor",
-        "is_emergency": True,
-    })
-    print(f"  can_grant: {perm.get('can_grant')}")
-    print(f"  required_approvers: {perm.get('required_approvers')}")
-    print(f"  emergency_override: {perm.get('emergency_override')}")
-    print(f"  notes: {perm.get('notes')}")
+        # 2. Test search_kb
+        print("\n🔍 Test: search_kb")
+        result = dispatch_tool("search_kb", {"query": "SLA P1 resolution time", "top_k": 2})
+        if result.get("chunks"):
+            for c in result["chunks"]:
+                print(f"  [{c.get('score', '?')}] {c.get('source')}: {c.get('text', '')[:70]}...")
+        else:
+            print(f"  Result: {result}")
 
-    # 5. Test invalid tool
-    print("\n❌ Test: invalid tool")
-    err = dispatch_tool("nonexistent_tool", {})
-    print(f"  Error: {err.get('error')}")
+        # 3. Test get_ticket_info
+        print("\n🎫 Test: get_ticket_info")
+        ticket = dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+        print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
+        if ticket.get("notifications_sent"):
+            print(f"  Notifications: {ticket['notifications_sent']}")
 
-    print("\n✅ MCP server test done.")
-    print("\nTODO Sprint 3: Implement HTTP server nếu muốn bonus +2.")
+        # 4. Test check_access_permission
+        print("\n🔐 Test: check_access_permission (Level 3, emergency)")
+        perm = dispatch_tool("check_access_permission", {
+            "access_level": 3,
+            "requester_role": "contractor",
+            "is_emergency": True,
+        })
+        print(f"  can_grant: {perm.get('can_grant')}")
+        print(f"  required_approvers: {perm.get('required_approvers')}")
+        print(f"  emergency_override: {perm.get('emergency_override')}")
+        print(f"  notes: {perm.get('notes')}")
+
+        # 5. Test invalid tool
+        print("\n❌ Test: invalid tool")
+        err = dispatch_tool("nonexistent_tool", {})
+        print(f"  Error: {err.get('error')}")
+
+        print("\n✅ MCP server test done.")
+        print("\nRun with --serve or --serve-http for real MCP mode.")
