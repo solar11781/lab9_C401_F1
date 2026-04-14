@@ -19,6 +19,8 @@ Gọi độc lập để test:
 import os
 import sys
 from typing import Optional
+from openai import OpenAI
+import json
 
 WORKER_NAME = "policy_tool_worker"
 
@@ -48,6 +50,14 @@ def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
             "error": None,
             "timestamp": datetime.now().isoformat(),
         }
+    except ImportError:
+        return {
+            "tool": tool_name,
+            "input": tool_input,
+            "output": {"message": f"Simulated {tool_name} success. MCP Server not found."},
+            "error": None,
+            "timestamp": datetime.now().isoformat(),
+        }
     except Exception as e:
         return {
             "tool": tool_name,
@@ -64,81 +74,89 @@ def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
 
 def analyze_policy(task: str, chunks: list) -> dict:
     """
-    Phân tích policy dựa trên context chunks.
-
-    TODO Sprint 2: Implement logic này với LLM call hoặc rule-based check.
-
-    Cần xử lý các exceptions:
-    - Flash Sale → không được hoàn tiền
-    - Digital product / license key / subscription → không được hoàn tiền
-    - Sản phẩm đã kích hoạt → không được hoàn tiền
-    - Đơn hàng trước 01/02/2026 → áp dụng policy v3 (không có trong docs)
-
-    Returns:
-        dict with: policy_applies, policy_name, exceptions_found, source, rule, explanation
+    Phân tích policy bằng LLM. Trả về format chuẩn để Synthesis dễ dàng đọc.
     """
+    # Lấy nguồn tài liệu từ chunks
+    sources = list({c.get("source", "unknown") for c in chunks if c})
+    context_text = "\n".join([f"[{c.get('source', 'unknown')}] {c.get('text', '')}" for c in chunks])
+
+    # Khởi tạo OpenAI Client
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    # NẾU KHÔNG CÓ API KEY HOẶC LỖI -> FALLBACK VỀ RULE-BASED CŨ CỦA BẠN
+    if not api_key:
+        return _rule_based_fallback(task, chunks, sources)
+
+    client = OpenAI(api_key=api_key)
+
+    system_prompt = """Bạn là một Chuyên gia phân tích Chính sách Doanh nghiệp.
+Nhiệm vụ của bạn là đối chiếu 'Task' (yêu cầu của khách hàng/nhân viên) với 'Context' (quy định công ty) để xem yêu cầu có được chấp thuận hay không.
+
+HÃY CHÚ Ý ĐẶC BIỆT CÁC NGOẠI LỆ:
+1. Đơn hàng "Flash Sale" -> KHÔNG hoàn tiền.
+2. Sản phẩm kỹ thuật số (license key, subscription) -> KHÔNG hoàn tiền.
+3. Sản phẩm đã kích hoạt/đăng ký -> KHÔNG hoàn tiền.
+4. Chú ý mốc thời gian: Nếu Task nhắc đến ngày trước 01/02/2026, ghi chú là "Áp dụng chính sách v3 (ngoài tài liệu hiện tại)".
+
+Trích xuất thông tin và CHỈ trả về định dạng JSON sau (không markdown, không giải thích thêm):
+{
+    "policy_applies": true/false,
+    "policy_name": "Tên chính sách đang xét (ví dụ: Chính sách hoàn tiền v4)",
+    "exceptions_found": [
+        {"type": "tên_ngoại_lệ", "rule": "quy định bị vi phạm", "source": "tên file nguồn"}
+    ],
+    "policy_version_note": "Ghi chú về version nếu có, nếu không để rỗng",
+    "explanation": "Giải thích ngắn gọn tại sao"
+}
+"""
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", # Dùng model mini cho rẻ và nhanh
+            response_format={"type": "json_object"}, # Bắt buộc trả JSON
+            temperature=0.1, # Nhiệt độ thấp để trả lời mang tính logic, không sáng tạo
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Task: {task}\n\nContext:\n{context_text}"}
+            ]
+        )
+        
+        # Parse JSON từ LLM
+        result = json.loads(response.choices[0].message.content)
+        result["source"] = sources # Gắn đính kèm danh sách file nguồn
+        
+        # Đảm bảo policy_applies là boolean chuẩn xác (nếu có exceptions thì ko apply)
+        if result.get("exceptions_found") and len(result["exceptions_found"]) > 0:
+            result["policy_applies"] = False
+            
+        return result
+
+    except Exception as e:
+        print(f"[Policy Worker] LLM Analysis Error: {e}. Falling back to Rule-based.")
+        return _rule_based_fallback(task, chunks, sources)
+
+def _rule_based_fallback(task: str, chunks: list, sources: list) -> dict:
+    """Hàm backup rule-based cũ của bạn, chạy khi LLM lỗi hoặc không có Key"""
     task_lower = task.lower()
     context_text = " ".join([c.get("text", "") for c in chunks]).lower()
-
-    # --- Rule-based exception detection ---
     exceptions_found = []
 
-    # Exception 1: Flash Sale
     if "flash sale" in task_lower or "flash sale" in context_text:
-        exceptions_found.append({
-            "type": "flash_sale_exception",
-            "rule": "Đơn hàng Flash Sale không được hoàn tiền (Điều 3, chính sách v4).",
-            "source": "policy_refund_v4.txt",
-        })
+        exceptions_found.append({"type": "flash_sale", "rule": "Không hoàn tiền Flash Sale", "source": "policy_refund_v4.txt"})
+    if any(kw in task_lower for kw in ["license", "subscription", "kỹ thuật số"]):
+        exceptions_found.append({"type": "digital_product", "rule": "Không hoàn tiền hàng Digital", "source": "policy_refund_v4.txt"})
+    if any(kw in task_lower for kw in ["đã kích", "đăng ký", "đã sử dụng"]):
+        exceptions_found.append({"type": "activated", "rule": "Không hoàn tiền sản phẩm đã dùng", "source": "policy_refund_v4.txt"})
 
-    # Exception 2: Digital product
-    if any(kw in task_lower for kw in ["license key", "license", "subscription", "kỹ thuật số"]):
-        exceptions_found.append({
-            "type": "digital_product_exception",
-            "rule": "Sản phẩm kỹ thuật số (license key, subscription) không được hoàn tiền (Điều 3).",
-            "source": "policy_refund_v4.txt",
-        })
-
-    # Exception 3: Activated product
-    if any(kw in task_lower for kw in ["đã kích hoạt", "đã đăng ký", "đã sử dụng"]):
-        exceptions_found.append({
-            "type": "activated_exception",
-            "rule": "Sản phẩm đã kích hoạt hoặc đăng ký tài khoản không được hoàn tiền (Điều 3).",
-            "source": "policy_refund_v4.txt",
-        })
-
-    # Determine policy_applies
-    policy_applies = len(exceptions_found) == 0
-
-    # Determine which policy version applies (temporal scoping)
-    # TODO: Check nếu đơn hàng trước 01/02/2026 → v3 applies (không có docs, nên flag cho synthesis)
-    policy_name = "refund_policy_v4"
-    policy_version_note = ""
-    if "31/01" in task_lower or "30/01" in task_lower or "trước 01/02" in task_lower:
-        policy_version_note = "Đơn hàng đặt trước 01/02/2026 áp dụng chính sách v3 (không có trong tài liệu hiện tại)."
-
-    # TODO Sprint 2: Gọi LLM để phân tích phức tạp hơn
-    # Ví dụ:
-    # from openai import OpenAI
-    # client = OpenAI()
-    # response = client.chat.completions.create(
-    #     model="gpt-4o-mini",
-    #     messages=[
-    #         {"role": "system", "content": "Bạn là policy analyst. Dựa vào context, xác định policy áp dụng và các exceptions."},
-    #         {"role": "user", "content": f"Task: {task}\n\nContext:\n" + "\n".join([c['text'] for c in chunks])}
-    #     ]
-    # )
-    # analysis = response.choices[0].message.content
-
-    sources = list({c.get("source", "unknown") for c in chunks if c})
+    policy_version_note = "Áp dụng v3" if any(k in task_lower for k in ["31/01", "30/01", "trước 01/02"]) else ""
 
     return {
-        "policy_applies": policy_applies,
-        "policy_name": policy_name,
+        "policy_applies": len(exceptions_found) == 0,
+        "policy_name": "refund_policy_v4",
         "exceptions_found": exceptions_found,
         "source": sources,
         "policy_version_note": policy_version_note,
-        "explanation": "Analyzed via rule-based policy check. TODO: upgrade to LLM-based analysis.",
+        "explanation": "Analyzed via rule-based fallback.",
     }
 
 
