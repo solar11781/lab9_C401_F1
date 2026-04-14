@@ -130,9 +130,9 @@ except json.JSONDecodeError:
     print(f"⚠️ Warning: File {trace_path} is corrupted or empty. Skipping...")
     continue
 
-# Kết quả Terminal:
-# ✅ Done. 15 / 15 succeeded.
-# [Analysis] total_traces: 15, avg_confidence: 0.542
+Kết quả Terminal:
+✅ Done. 15 / 15 succeeded.
+[Analysis] total_traces: 15, avg_confidence: 0.542
 ---
 
 ## 4. Tôi tự đánh giá đóng góp của mình (100–150 từ)
@@ -160,7 +160,7 @@ Tôi phụ thuộc hoàn toàn vào Supervisor của Gia Khánh. Tôi cần Sup
 ## 5. Nếu có thêm 2 giờ, tôi sẽ làm gì? (50–100 từ)
 
 
-Nếu có thêm 2 giờ, tôi sẽ tập trung sửa mã nguồn để thu thập chính xác chỉ số latency_ms.
+- Nếu có thêm 2 giờ, tôi sẽ tập trung sửa mã nguồn để thu thập chính xác chỉ số latency_ms.
 ng file eval_report.json hiện tại, mục avg_latency_ms của Multi-agent đang hiển thị là 0, điều này làm giảm tính khách quan khi so sánh với Single-agent (850ms). Tôi muốn đo chính xác độ trễ phát sinh tại node Supervisor khi nó phải thực hiện Keyword Routing kết hợp gọi LLM, từ đó đưa ra bằng chứng định lượng về việc Multi-agent thực sự "nặng" hơn hay hiệu quả hơn về mặt thời gian xử lý so với Single-agent.
 ---
 
