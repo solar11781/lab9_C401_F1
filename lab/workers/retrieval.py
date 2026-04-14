@@ -93,7 +93,9 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
     Returns:
         list of {"text": str, "source": str, "score": float, "metadata": dict}
     """
-    # TODO: Implement dense retrieval
+    if not query or not query.strip():
+        return []
+
     embed = _get_embedding_fn()
     query_embedding = embed(query)
 
@@ -105,23 +107,29 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
             include=["documents", "distances", "metadatas"]
         )
 
+        # Kiểm tra kết quả trả về có hợp lệ không
+        if not results or not results.get("documents") or not results["documents"][0]:
+            return []
+
         chunks = []
         for i, (doc, dist, meta) in enumerate(zip(
             results["documents"][0],
             results["distances"][0],
             results["metadatas"][0]
         )):
+            # Clamp score trong [0, 1] theo contract
+            score = max(0.0, min(1.0, round(1 - dist, 4)))
             chunks.append({
                 "text": doc,
                 "source": meta.get("source", "unknown"),
-                "score": round(1 - dist, 4),  # cosine similarity
+                "score": score,
                 "metadata": meta,
             })
         return chunks
 
     except Exception as e:
         print(f"⚠️  ChromaDB query failed: {e}")
-        # Fallback: return empty (abstain)
+        # Fallback: return empty — không trả về fake chunks
         return []
 
 
@@ -140,6 +148,7 @@ def run(state: dict) -> dict:
 
     state.setdefault("workers_called", [])
     state.setdefault("history", [])
+    state.setdefault("worker_io_logs", [])
 
     state["workers_called"].append(WORKER_NAME)
 
@@ -174,7 +183,7 @@ def run(state: dict) -> dict:
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
     # Ghi worker IO vào state để trace
-    state.setdefault("worker_io_logs", []).append(worker_io)
+    state["worker_io_logs"].append(worker_io)
 
     return state
 
