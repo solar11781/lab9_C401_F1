@@ -1,0 +1,77 @@
+{
+  "task": "Tài khoản bị khóa sau bao nhiêu lần đăng nhập sai?",
+  "route_reason": "default: information lookup",
+  "risk_high": false,
+  "needs_tool": false,
+  "hitl_triggered": false,
+  "retrieved_chunks": [
+    {
+      "text": "=== Section 1: Tài khoản và mật khẩu ===\n\n\nQ: Tôi quên mật khẩu, phải làm gì?\nA: Truy cập https://sso.company.internal/reset hoặc liên hệ Helpdesk qua ext. 9000. Mật khẩu mới sẽ được gửi qua email công ty trong vòng 5 phút.\n\nQ: Tài khoản bị khóa sau bao nhiêu lần đăng nhập sai?\nA: Tài khoản bị khóa sau 5 lần đăng nhập sai liên tiếp. Để mở khóa, liên hệ IT Helpdesk hoặc tự reset qua portal SSO.\n\nQ: Mật khẩu cần thay đổi định kỳ không?\nA: Có. Mật khẩu phải được thay đổi mỗi 90 ngày. Hệ thống sẽ nhắc nhở 7 ngày trước khi hết hạn.",
+      "source": "support/helpdesk-faq.md",
+      "score": 0.6364,
+      "metadata": {
+        "effective_date": "2026-01-20",
+        "source": "support/helpdesk-faq.md",
+        "department": "IT",
+        "access": "internal",
+        "section": "Section 1: Tài khoản và mật khẩu"
+      }
+    },
+    {
+      "text": "=== Section 5: Thu hồi quyền truy cập ===\n\nQuyền phải được thu hồi trong các trường hợp:\n- Nhân viên nghỉ việc: Thu hồi ngay trong ngày cuối.\n- Hết hạn contract: Thu hồi đúng ngày hết hạn.\n- Chuyển bộ phận: Điều chỉnh trong 3 ngày làm việc.",
+      "source": "it/access-control-sop.md",
+      "score": 0.4198,
+      "metadata": {
+        "effective_date": "2026-01-01",
+        "department": "IT Security",
+        "section": "Section 5: Thu hồi quyền truy cập",
+        "access": "internal",
+        "source": "it/access-control-sop.md"
+      }
+    },
+    {
+      "text": "=== Section 2: Phân cấp quyền truy cập ===\n\n\nLevel 1 - Read Only:\nÁp dụng cho: Tất cả nhân viên mới trong 30 ngày đầu.\nPhê duyệt: Line Manager.\nThời gian xử lý: 1 ngày làm việc.\n\nLevel 2 - Standard Access:\nÁp dụng cho: Nhân viên chính thức đã qua thử việc.\nPhê duyệt: Line Manager + IT Admin.\nThời gian xử lý: 2 ngày làm việc.\n\nLevel 3 - Elevated Access:\nÁp dụng cho: Team Lead, Senior Engineer, Manager.\nPhê duyệt: Line Manager + IT Admin + IT Security.\nThời gian xử lý: 3 ngày làm việc.\n\nLevel 4 - Admin Access:\nÁp dụng cho: DevOps, SRE, IT Admin.\nPhê duyệt: IT Manager + CISO.\nThời gian xử lý: 5 ngày làm việc.\nYêu cầu thêm: Training bắt buộc về security policy.",
+      "source": "it/access-control-sop.md",
+      "score": 0.4058,
+      "metadata": {
+        "source": "it/access-control-sop.md",
+        "effective_date": "2026-01-01",
+        "section": "Section 2: Phân cấp quyền truy cập",
+        "department": "IT Security",
+        "access": "internal"
+      }
+    }
+  ],
+  "retrieved_sources": [
+    "support/helpdesk-faq.md",
+    "it/access-control-sop.md"
+  ],
+  "policy_result": {},
+  "mcp_tools_used": [],
+  "final_answer": "Tài khoản bị khóa sau 5 lần đăng nhập sai liên tiếp. Để mở khóa, bạn có thể liên hệ IT Helpdesk hoặc tự reset qua portal SSO [1].",
+  "sources": [
+    "support/helpdesk-faq.md",
+    "it/access-control-sop.md"
+  ],
+  "confidence": 0.49,
+  "history": [
+    "[supervisor] received task: Tài khoản bị khóa sau bao nhiêu lần đăng nhập sai?",
+    "[supervisor] route=retrieval_worker reason=default: information lookup",
+    "[retrieval_worker] called",
+    "[retrieval_worker] retrieved 3 chunks from 2 sources.",
+    "[retrieval_worker] retrieved 3 chunks",
+    "[synthesis_worker] called",
+    "[synthesis_worker] answer generated, confidence=0.49, sources=['support/helpdesk-faq.md', 'it/access-control-sop.md']",
+    "[synthesis_worker] answer generated, confidence=0.49"
+  ],
+  "workers_called": [
+    "retrieval_worker",
+    "retrieval_worker",
+    "synthesis_worker",
+    "synthesis_worker"
+  ],
+  "supervisor_route": "retrieval_worker",
+  "latency_ms": null,
+  "run_id": "run_20260414_170726",
+  "question_id": "q04"
+}

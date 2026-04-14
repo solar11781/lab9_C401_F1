@@ -1,0 +1,26 @@
+{
+  "task": "ERR-403-AUTH là lỗi gì và cách xử lý?",
+  "route_reason": "unknown error code + risk_high → human review",
+  "risk_high": true,
+  "needs_tool": false,
+  "hitl_triggered": false,
+  "retrieved_chunks": [],
+  "retrieved_sources": [],
+  "policy_result": {},
+  "mcp_tools_used": [],
+  "final_answer": "",
+  "sources": [],
+  "confidence": 0.0,
+  "history": [
+    "[supervisor] received task: ERR-403-AUTH là lỗi gì và cách xử lý?",
+    "[supervisor] route=human_review reason=unknown error code + risk_high → human review",
+    "[human_review] approved by human",
+    "[supervisor] received task: ERR-403-AUTH là lỗi gì và cách xử lý?",
+    "[supervisor] route=human_review reason=unknown error code + risk_high → human review"
+  ],
+  "workers_called": [],
+  "supervisor_route": "human_review",
+  "latency_ms": null,
+  "run_id": "run_20260414_170748",
+  "question_id": "q09"
+}
