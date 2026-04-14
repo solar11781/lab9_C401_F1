@@ -29,7 +29,7 @@ WORKER_NAME = "retrieval_worker"
 DEFAULT_TOP_K = 3
 
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "day09_docs")
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "day09_docs")
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "all-MiniLM-L6-v2")
 
 # Global Cache (tránh việc load lại model/DB mỗi lần query)
@@ -43,13 +43,28 @@ _COLLECTION = None
 def _get_embedding_fn() -> Callable[[str], List[float]]:
     """
     Khởi tạo và cache embedding function.
-    Ưu tiên: OpenAI → Sentence Transformers (Local) → Random (test).
+    Ưu tiên: Sentence Transformers (Local) → OpenAI → Random (test).
     """
     global _EMBED_FN
     if _EMBED_FN is not None:
         return _EMBED_FN
 
-    # 1. ƯU TIÊN 1: OpenAI (Nếu có API Key)
+    # 1. ƯU TIÊN 1: Sentence Transformers (Offline Local)
+    try:
+        from sentence_transformers import SentenceTransformer
+        print(f"🔄 Loading SentenceTransformer model: {EMBED_MODEL_NAME}...")
+        model = SentenceTransformer(EMBED_MODEL_NAME)
+        
+        def embed_st(text: str) -> List[float]:
+            return model.encode([text])[0].tolist()
+            
+        _EMBED_FN = embed_st
+        return _EMBED_FN
+    except ImportError:
+        pass
+
+    # 2. ƯU TIÊN 2: OpenAI (Nếu có API Key)
+    
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
@@ -66,22 +81,7 @@ def _get_embedding_fn() -> Callable[[str], List[float]]:
         except ImportError:
             print("⚠️ Có OPENAI_API_KEY nhưng chưa cài thư viện `openai`. Chuyển qua Option 2...")
             pass
-    else:
-        print("ℹ️ Không tìm thấy OPENAI_API_KEY trong .env. Chuyển qua Option 2...")
-
-    # 2. ƯU TIÊN 2: Sentence Transformers (Offline Local)
-    try:
-        from sentence_transformers import SentenceTransformer
-        print(f"🔄 Loading SentenceTransformer model: {EMBED_MODEL_NAME}...")
-        model = SentenceTransformer(EMBED_MODEL_NAME)
-        
-        def embed_st(text: str) -> List[float]:
-            return model.encode([text])[0].tolist()
-            
-        _EMBED_FN = embed_st
-        return _EMBED_FN
-    except ImportError:
-        pass
+    else:print("ℹ️ Không tìm thấy OPENAI_API_KEY trong .env. Chuyển qua Option 2...")
 
     # 3. FALLBACK: Random (Chỉ dùng cho testing khi thiếu thư viện)
     import random
@@ -107,14 +107,14 @@ def _get_collection() -> Any:
     client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
     
     try:
-        _COLLECTION = client.get_collection(COLLECTION_NAME)
+        _COLLECTION = client.get_collection(CHROMA_COLLECTION)
     except Exception:
         # Auto-create nếu chưa có
         _COLLECTION = client.get_or_create_collection(
-            COLLECTION_NAME,
+            CHROMA_COLLECTION,
             metadata={"hnsw:space": "cosine"}
         )
-        print(f"⚠️ Collection '{COLLECTION_NAME}' created but is empty. Please run index script.")
+        print(f"⚠️ Collection '{CHROMA_COLLECTION}' created but is empty. Please run index script.")
         
     return _COLLECTION
 
@@ -168,8 +168,7 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> List[Dict[str, Any
 
 
 def run(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Worker entry point — gọi từ graph.py.
+    """Worker entry point — gọi từ graph.py.
     """
     task = state.get("task", "")
     top_k = state.get("retrieval_top_k", DEFAULT_TOP_K)
