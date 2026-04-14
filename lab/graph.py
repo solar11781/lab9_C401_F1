@@ -162,13 +162,7 @@ def human_review_node(state: AgentState) -> AgentState:
     state["history"].append("[human_review] HITL triggered — awaiting human input")
     state["workers_called"].append("human_review")
 
-    # Placeholder: tự động approve để pipeline tiếp tục
-    print(f"\n⚠️  HITL TRIGGERED")
-    print(f"   Task: {state['task']}")
-    print(f"   Reason: {state['route_reason']}")
-    print(f"   Action: Auto-approving in lab mode (set hitl_triggered=True)\n")
-
-    # Sau khi human approve, route về retrieval để lấy evidence
+    # Continue pipeline
     state["supervisor_route"] = "retrieval_worker"
     state["route_reason"] += " | human approved → retrieval"
 
@@ -320,7 +314,9 @@ def build_graph():
     # 6. Kết thúc graph
     graph.add_edge("synthesis_worker", END)
 
-    return graph.compile()
+    return graph.compile(
+        interrupt_before=["human_review"]
+    )
 
 
 # ─────────────────────────────────────────────
@@ -341,7 +337,29 @@ def run_graph(task: str) -> AgentState:
         AgentState với final_answer, trace, routing info, v.v.
     """
     state = make_initial_state(task)
-    result = _graph(state)
+    result = _graph.invoke(state)
+
+    # HANDLE HITL INTERRUPT
+    if result.get("supervisor_route") == "human_review" and not result.get("hitl_triggered"):
+        print(f"\n⚠️  HITL REQUIRED")
+        print(f"Task   : {result['task']}")
+        print(f"Reason : {result['route_reason']}")
+
+        user_input = input("Approve this action? (y/n): ").strip().lower()
+
+        if user_input != "y":
+            result["final_answer"] = "Yêu cầu cần được xử lý bởi con người. Vui lòng liên hệ support."
+            result["confidence"] = 0.0
+            result["history"].append("[human_review] rejected by human")
+            return result
+
+        print("Approved. Resuming graph...\n")
+
+        result["history"].append("[human_review] approved by human")
+
+        # 🔁 Resume graph
+        result = _graph.invoke(result)
+
     return result
 
 
