@@ -49,22 +49,8 @@ def _get_embedding_fn() -> Callable[[str], List[float]]:
     if _EMBED_FN is not None:
         return _EMBED_FN
 
-    # 1. ƯU TIÊN 1: Sentence Transformers (Offline Local)
-    try:
-        from sentence_transformers import SentenceTransformer
-        print(f"🔄 Loading SentenceTransformer model: {EMBED_MODEL_NAME}...")
-        model = SentenceTransformer(EMBED_MODEL_NAME)
-        
-        def embed_st(text: str) -> List[float]:
-            return model.encode([text])[0].tolist()
-            
-        _EMBED_FN = embed_st
-        return _EMBED_FN
-    except ImportError:
-        pass
+    # 1. ƯU TIÊN 1: OpenAI (Nếu có API Key)
 
-    # 2. ƯU TIÊN 2: OpenAI (Nếu có API Key)
-    
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
@@ -82,6 +68,21 @@ def _get_embedding_fn() -> Callable[[str], List[float]]:
             print("⚠️ Có OPENAI_API_KEY nhưng chưa cài thư viện `openai`. Chuyển qua Option 2...")
             pass
     else:print("ℹ️ Không tìm thấy OPENAI_API_KEY trong .env. Chuyển qua Option 2...")
+
+    # 2. ƯU TIÊN 2: Sentence Transformers (Offline Local)
+    try:
+        from sentence_transformers import SentenceTransformer
+        print(f"🔄 Loading SentenceTransformer model: {EMBED_MODEL_NAME}...")
+        model = SentenceTransformer(EMBED_MODEL_NAME)
+        
+        def embed_st(text: str) -> List[float]:
+            return model.encode([text])[0].tolist()
+            
+        _EMBED_FN = embed_st
+        return _EMBED_FN
+    except ImportError:
+        pass
+
 
     # 3. FALLBACK: Random (Chỉ dùng cho testing khi thiếu thư viện)
     import random
