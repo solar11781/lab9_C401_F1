@@ -10,8 +10,8 @@
 | Bùi Trần Gia Bảo | Retrieval Owner | billxd04@gmail.com |
 | Lại Gia Khánh | Retrieval Owner | laigiakhanh1211@gmail.com |
 | Trương Minh Sơn | Eval Owner | chokhon2004@gmail.com |
-| Mạc Phương Nga | Tester | mpnga03@gmail.com |
-| Nguyễn Phạm Trà My | Documentation Owner | ___ |
+| Mạc Phương Nga | Worker Owner | mpnga03@gmail.com |
+| Nguyễn Phạm Trà My | Worker Owner | ___ |
 
 **Ngày nộp:** 14/04/2026
 **Repo:** [(https://github.com/solar11781/lab8_C401_F1.git)](https://github.com/solar11781/lab9_C401_F1.git)
