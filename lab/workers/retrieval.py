@@ -1,10 +1,10 @@
 """
 workers/retrieval.py — Retrieval Worker
-Sprint 2: Implement retrieval từ ChromaDB, trả về chunks + sources.
+Implement retrieval từ ChromaDB, trả về chunks + sources.
 
 Input (từ AgentState):
     - task: câu hỏi cần retrieve
-    - (optional) retrieved_chunks nếu đã có từ trước
+    - retrieval_top_k (optional): số lượng chunk cần lấy (default: 3)
 
 Output (vào AgentState):
     - retrieved_chunks: list of {"text", "source", "score", "metadata"}
@@ -16,84 +16,116 @@ Gọi độc lập để test:
 """
 
 import os
-import sys
+from typing import List, Dict, Any, Callable
+from dotenv import load_dotenv
+
+# Load các biến môi trường từ file .env
+load_dotenv()
 
 # ─────────────────────────────────────────────
-# Worker Contract (xem contracts/worker_contracts.yaml)
-# Input:  {"task": str, "top_k": int = 3}
-# Output: {"retrieved_chunks": list, "retrieved_sources": list, "error": dict | None}
+# Cấu hình & Hằng số
 # ─────────────────────────────────────────────
-
 WORKER_NAME = "retrieval_worker"
 DEFAULT_TOP_K = 3
 
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "day09_docs")
+EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "all-MiniLM-L6-v2")
 
-def _get_embedding_fn():
+# Global Cache (tránh việc load lại model/DB mỗi lần query)
+_EMBED_FN: Callable[[str], List[float]] | None = None
+_COLLECTION = None
+
+# ─────────────────────────────────────────────
+# Core Logic
+# ─────────────────────────────────────────────
+
+def _get_embedding_fn() -> Callable[[str], List[float]]:
     """
-    Trả về embedding function.
-    TODO Sprint 1: Implement dùng OpenAI hoặc Sentence Transformers.
+    Khởi tạo và cache embedding function.
+    Ưu tiên: OpenAI → Sentence Transformers (Local) → Random (test).
     """
-    # Option A: Sentence Transformers (offline, không cần API key)
+    global _EMBED_FN
+    if _EMBED_FN is not None:
+        return _EMBED_FN
+
+    # 1. ƯU TIÊN 1: OpenAI (Nếu có API Key)
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            print("🔄 Using OpenAI for embeddings...")
+            
+            def embed_oai(text: str) -> List[float]:
+                resp = client.embeddings.create(input=text, model="text-embedding-3-small")
+                return resp.data[0].embedding
+                
+            _EMBED_FN = embed_oai
+            return _EMBED_FN
+        except ImportError:
+            print("⚠️ Có OPENAI_API_KEY nhưng chưa cài thư viện `openai`. Chuyển qua Option 2...")
+            pass
+    else:
+        print("ℹ️ Không tìm thấy OPENAI_API_KEY trong .env. Chuyển qua Option 2...")
+
+    # 2. ƯU TIÊN 2: Sentence Transformers (Offline Local)
     try:
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        def embed(text: str) -> list:
+        print(f"🔄 Loading SentenceTransformer model: {EMBED_MODEL_NAME}...")
+        model = SentenceTransformer(EMBED_MODEL_NAME)
+        
+        def embed_st(text: str) -> List[float]:
             return model.encode([text])[0].tolist()
-        return embed
+            
+        _EMBED_FN = embed_st
+        return _EMBED_FN
     except ImportError:
         pass
 
-    # Option B: OpenAI (cần API key)
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        def embed(text: str) -> list:
-            resp = client.embeddings.create(input=text, model="text-embedding-3-small")
-            return resp.data[0].embedding
-        return embed
-    except ImportError:
-        pass
-
-    # Fallback: random embeddings cho test (KHÔNG dùng production)
+    # 3. FALLBACK: Random (Chỉ dùng cho testing khi thiếu thư viện)
     import random
-    def embed(text: str) -> list:
-        return [random.random() for _ in range(384)]
-    print("⚠️  WARNING: Using random embeddings (test only). Install sentence-transformers.")
-    return embed
+    print("⚠️ WARNING: Using random embeddings (test only). Please install openai or sentence-transformers.")
+    
+    def embed_random(text: str) -> List[float]:
+        return [random.random() for _ in range(384)]  # Trùng dimension với MiniLM hoặc có thể sửa tùy ý
+        
+    _EMBED_FN = embed_random
+    return _EMBED_FN
 
 
-def _get_collection():
+def _get_collection() -> Any:
     """
-    Kết nối ChromaDB collection.
-    TODO Sprint 2: Đảm bảo collection đã được build từ Step 3 trong README.
+    Khởi tạo và cache kết nối đến ChromaDB Collection.
     """
+    global _COLLECTION
+    if _COLLECTION is not None:
+        return _COLLECTION
+
     import chromadb
-    client = chromadb.PersistentClient(path="./chroma_db")
+    print(f"🔄 Connecting to ChromaDB at {CHROMA_DB_PATH}...")
+    client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+    
     try:
-        collection = client.get_collection("day09_docs")
+        _COLLECTION = client.get_collection(COLLECTION_NAME)
     except Exception:
         # Auto-create nếu chưa có
-        collection = client.get_or_create_collection(
-            "day09_docs",
+        _COLLECTION = client.get_or_create_collection(
+            COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"}
         )
-        print(f"⚠️  Collection 'day09_docs' chưa có data. Chạy index script trong README trước.")
-    return collection
+        print(f"⚠️ Collection '{COLLECTION_NAME}' created but is empty. Please run index script.")
+        
+    return _COLLECTION
 
 
-def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
+def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> List[Dict[str, Any]]:
     """
     Dense retrieval: embed query → query ChromaDB → trả về top_k chunks.
-
-    TODO Sprint 2: Implement phần này.
-    - Dùng _get_embedding_fn() để embed query
-    - Query collection với n_results=top_k
-    - Format result thành list of dict
-
-    Returns:
-        list of {"text": str, "source": str, "score": float, "metadata": dict}
     """
-    # TODO: Implement dense retrieval
+    if not query or not query.strip():
+        return []
+
     embed = _get_embedding_fn()
     query_embedding = embed(query)
 
@@ -105,45 +137,50 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
             include=["documents", "distances", "metadatas"]
         )
 
+        # Kiểm tra kết quả trả về có hợp lệ không
+        if not results or not results.get("documents") or not results["documents"][0]:
+            return []
+
         chunks = []
-        for i, (doc, dist, meta) in enumerate(zip(
+        # ChromaDB trả về mảng 2 chiều vì có thể query nhiều câu cùng lúc
+        for doc, dist, meta in zip(
             results["documents"][0],
             results["distances"][0],
             results["metadatas"][0]
-        )):
+        ):
+            # Xử lý an toàn trường hợp metadata bị thiếu (None) trong database
+            safe_meta = meta or {}
+            
+            # Clamp score trong [0, 1]
+            score = max(0.0, min(1.0, round(1 - dist, 4)))
+
             chunks.append({
                 "text": doc,
-                "source": meta.get("source", "unknown"),
-                "score": round(1 - dist, 4),  # cosine similarity
-                "metadata": meta,
+                "source": safe_meta.get("source", "unknown"),
+                "score": score,
+                "metadata": safe_meta,
             })
         return chunks
 
     except Exception as e:
-        print(f"⚠️  ChromaDB query failed: {e}")
-        # Fallback: return empty (abstain)
+        print(f"⚠️ ChromaDB query failed: {e}")
         return []
 
 
-def run(state: dict) -> dict:
+def run(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Worker entry point — gọi từ graph.py.
-
-    Args:
-        state: AgentState dict
-
-    Returns:
-        Updated AgentState với retrieved_chunks và retrieved_sources
     """
     task = state.get("task", "")
     top_k = state.get("retrieval_top_k", DEFAULT_TOP_K)
 
+    # Initialize state fields nếu chưa có
     state.setdefault("workers_called", [])
     state.setdefault("history", [])
+    state.setdefault("worker_io_logs", [])
 
     state["workers_called"].append(WORKER_NAME)
 
-    # Log worker IO (theo contract)
     worker_io = {
         "worker": WORKER_NAME,
         "input": {"task": task, "top_k": top_k},
@@ -153,7 +190,6 @@ def run(state: dict) -> dict:
 
     try:
         chunks = retrieve_dense(task, top_k=top_k)
-
         sources = list({c["source"] for c in chunks})
 
         state["retrieved_chunks"] = chunks
@@ -164,7 +200,7 @@ def run(state: dict) -> dict:
             "sources": sources,
         }
         state["history"].append(
-            f"[{WORKER_NAME}] retrieved {len(chunks)} chunks from {sources}"
+            f"[{WORKER_NAME}] retrieved {len(chunks)} chunks from {len(sources)} sources."
         )
 
     except Exception as e:
@@ -173,8 +209,7 @@ def run(state: dict) -> dict:
         state["retrieved_sources"] = []
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
-    # Ghi worker IO vào state để trace
-    state.setdefault("worker_io_logs", []).append(worker_io)
+    state["worker_io_logs"].append(worker_io)
 
     return state
 
@@ -196,11 +231,15 @@ if __name__ == "__main__":
 
     for query in test_queries:
         print(f"\n▶ Query: {query}")
-        result = run({"task": query})
+        result = run({"task": query, "retrieval_top_k": 2})
+        
         chunks = result.get("retrieved_chunks", [])
         print(f"  Retrieved: {len(chunks)} chunks")
-        for c in chunks[:2]:
-            print(f"    [{c['score']:.3f}] {c['source']}: {c['text'][:80]}...")
+        
+        for i, c in enumerate(chunks):
+            text_preview = c['text'][:80].replace('\n', ' ')
+            print(f"    {i+1}. [{c['score']:.3f}] {c['source']}: {text_preview}...")
+            
         print(f"  Sources: {result.get('retrieved_sources', [])}")
 
     print("\n✅ retrieval_worker test done.")
