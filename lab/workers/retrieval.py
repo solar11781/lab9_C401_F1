@@ -31,19 +31,9 @@ DEFAULT_TOP_K = 3
 def _get_embedding_fn():
     """
     Trả về embedding function.
-    TODO Sprint 1: Implement dùng OpenAI hoặc Sentence Transformers.
+    Ưu tiên: OpenAI → SentenceTransformers → Random (test only).
     """
-    # Option A: Sentence Transformers (offline, không cần API key)
-    try:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        def embed(text: str) -> list:
-            return model.encode([text])[0].tolist()
-        return embed
-    except ImportError:
-        pass
-
-    # Option B: OpenAI (cần API key)
+    # Option A: OpenAI (ưu tiên — cần API key)
     try:
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -54,11 +44,21 @@ def _get_embedding_fn():
     except ImportError:
         pass
 
+    # Option B: Sentence Transformers (offline, không cần API key)
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        def embed(text: str) -> list:
+            return model.encode([text])[0].tolist()
+        return embed
+    except ImportError:
+        pass
+
     # Fallback: random embeddings cho test (KHÔNG dùng production)
     import random
     def embed(text: str) -> list:
         return [random.random() for _ in range(384)]
-    print("⚠️  WARNING: Using random embeddings (test only). Install sentence-transformers.")
+    print("⚠️  WARNING: Using random embeddings (test only). Install openai or sentence-transformers.")
     return embed
 
 
